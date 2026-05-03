@@ -1,0 +1,40 @@
+name: Smuggle GGUF Model
+
+# This allows you to trigger the smuggling run manually
+on:
+  workflow_dispatch:
+    inputs:
+      model_url:
+        description: 'Direct download URL from HuggingFace'
+        required: true
+        # Default is Llama-3.2-1B-Instruct (Q4_K_M) - Fast, capable, and well under the 2GB limit
+        default: 'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf'
+      file_name:
+        description: 'What to save the file as'
+        required: true
+        default: 'smuggled-llama3.gguf'
+
+jobs:
+  heist:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Crucial: Allows the runner to create a release in your repo
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Download the Contraband
+        run: |
+          echo "Initiating download from outside the firewall..."
+          wget -O ${{ github.event.inputs.file_name }} ${{ github.event.inputs.model_url }}
+          echo "Download complete. File size:"
+          ls -lh ${{ github.event.inputs.file_name }}
+
+      - name: Stash in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: payload-${{ github.run_number }}
+          name: "Smuggled AI Drop #${{ github.run_number }}"
+          body: "Your model has been successfully retrieved."
+          files: ${{ github.event.inputs.file_name }}
