@@ -1,4 +1,5 @@
 import { classifyIntent, compactMessages, id, roleSet, safeJson, sha256, clamp } from './utils.js';
+import { runEpistemicLayer, epistemicPromptSection } from './epistemic-runtime.js';
 
 const ROLE_PROMPTS = {
   implementer: 'Produce a concrete, technically correct solution. Focus on executable details, interfaces, edge cases, and operational constraints.',
@@ -30,6 +31,26 @@ function conversationText(messages) {
   return compactMessages(messages, 12_000).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n');
 }
 
+function compactEpistemicTrace(epistemic) {
+  if (!epistemic) return undefined;
+  return {
+    graphDigest: epistemic.graph.digest,
+    claims: epistemic.graph.claims.length,
+    quboDigest: epistemic.qubo.digest,
+    quantumJobDigest: epistemic.solve.job.digest,
+    qaoaBackend: epistemic.solve.qaoa.backend,
+    qaoaEnergy: epistemic.solve.qaoa.energy,
+    exactEnergy: epistemic.solve.exact?.energy ?? null,
+    optimalityGap: epistemic.solve.optimalityGap,
+    qaoaVsGreedyDelta: epistemic.solve.qaoaVsGreedyDelta,
+    acceptedQuantumCandidate: epistemic.solve.acceptedQuantumCandidate,
+    chosenBackend: epistemic.solve.chosen.backend,
+    selected: epistemic.solve.chosen.selected,
+    rejected: epistemic.rejectedClaimIds,
+    trust: epistemic.solve.trust
+  };
+}
+
 export class StatefulMindMesh {
   constructor({ provider, memory, ledger, defaultMode = 'balanced' } = {}) {
     this.provider = provider;
@@ -47,7 +68,7 @@ export class StatefulMindMesh {
     const intent = classifyIntent(query);
     const roles = roleSet(intent, mode);
     const started = Date.now();
-    const traceStart = await this.ledger.begin({ intent, mode, roles, queryHash: sha256(query) });
+    const traceStart = await this.ledger.begin({ intent, mode, roles, queryHash: sha256(query), architecture: 'smm-q/v1' });
     const traceId = traceStart.traceId;
 
     const memories = this.memory?.enabled ? await this.memory.recall(query, { limit: mode === 'deep' ? 8 : 5 }) : [];
@@ -84,7 +105,25 @@ export class StatefulMindMesh {
     const successful = views.filter((v) => v.content);
     if (!successful.length) throw new Error('All cognitive nodes failed to produce a response.');
 
-    const verificationPrompt = `You are the verifier for a multi-view answer. Evaluate the candidate outputs against the original request. Return ONLY JSON with this schema: {"confidence":0.0,"risks":["..."],"agreements":["..."],"required_corrections":["..."]}. Confidence must reflect correctness and agreement, not writing style.\n\nORIGINAL REQUEST:\n${query}\n\nCANDIDATES:\n${successful.map((v) => `### ${v.role}\n${v.content}`).join('\n\n')}`;
+    let epistemic = null;
+    if (mode !== 'fast' && successful.length > 1) {
+      try {
+        epistemic = await runEpistemicLayer({ provider: this.provider, query, views: successful, mode, signal });
+        if (epistemic) {
+          await this.ledger.record('epistemic.compile', {
+            graphDigest: epistemic.graph.digest,
+            claimCount: epistemic.graph.claims.length,
+            quboDigest: epistemic.qubo.digest,
+            quantumJobDigest: epistemic.solve.job.digest
+          }, traceId);
+          await this.ledger.record('epistemic.solve', compactEpistemicTrace(epistemic), traceId);
+        }
+      } catch (error) {
+        await this.ledger.record('epistemic.error', { error: error.message }, traceId);
+      }
+    }
+
+    const verificationPrompt = `You are the verifier for a multi-view answer. Evaluate the candidate outputs and the bounded epistemic selection against the original request. Return ONLY JSON with this schema: {"confidence":0.0,"risks":["..."],"agreements":["..."],"required_corrections":["..."]}. Confidence must reflect correctness and evidence, not writing style. The SMM-Q optimizer ranks internal claims; it does not establish external truth.\n\nORIGINAL REQUEST:\n${query}\n\nCANDIDATES:\n${successful.map((v) => `### ${v.role}\n${v.content}`).join('\n\n')}\n\nEPISTEMIC SELECTION:\n${epistemicPromptSection(epistemic)}`;
     let verification = { confidence: 0.55, risks: [], agreements: [], required_corrections: [] };
     if (mode !== 'fast' && successful.length > 1) {
       try {
@@ -105,7 +144,8 @@ export class StatefulMindMesh {
     await this.ledger.record('mesh.verify', {
       confidence: verification.confidence,
       risks: verification.risks?.slice?.(0, 10) || [],
-      candidateHashes: successful.map((v) => v.hash)
+      candidateHashes: successful.map((v) => v.hash),
+      epistemicGraphDigest: epistemic?.graph?.digest || null
     }, traceId);
 
     const synthesis = await this.provider.complete({
@@ -116,13 +156,14 @@ export class StatefulMindMesh {
             'You are the synthesis layer of SMM.',
             'Produce the single best final answer to the user.',
             'Use the candidate views as internal evidence, apply verifier corrections, and resolve conflicts.',
-            'Do not mention cognitive nodes, the verifier, memory IDs, or this orchestration unless the user explicitly asks about SMM internals.',
+            'When an SMM-Q epistemic selection is present, treat selected claims as a consistency-optimized candidate set, not as proof of external truth.',
+            'Do not mention cognitive nodes, the verifier, quantum optimization, memory IDs, or this orchestration unless the user explicitly asks about SMM internals.',
             'Do not expose hidden chain-of-thought. Give conclusions, necessary reasoning summaries, and actionable details.'
           ].join(' ')
         },
         {
           role: 'user',
-          content: `REQUEST:\n${query}\n\nCANDIDATES:\n${successful.map((v) => `### ${v.role}\n${v.content}`).join('\n\n')}\n\nVERIFICATION:\n${JSON.stringify(verification)}`
+          content: `REQUEST:\n${query}\n\nCANDIDATES:\n${successful.map((v) => `### ${v.role}\n${v.content}`).join('\n\n')}\n\nEPISTEMIC SELECTION:\n${epistemicPromptSection(epistemic)}\n\nVERIFICATION:\n${JSON.stringify(verification)}`
         }
       ],
       temperature: 0.2,
@@ -136,7 +177,8 @@ export class StatefulMindMesh {
       confidence: verification.confidence,
       durationMs: Date.now() - started,
       successfulNodes: successful.length,
-      totalNodes: views.length
+      totalNodes: views.length,
+      epistemicGraphDigest: epistemic?.graph?.digest || null
     }, traceId);
 
     if (remember && this.memory?.enabled) {
@@ -144,9 +186,14 @@ export class StatefulMindMesh {
       await this.memory.remember({
         text: memoryText,
         role: 'exchange',
-        tags: [intent, 'smm'],
+        tags: [intent, 'smm', epistemic ? 'smm-q' : 'classical'],
         salience: verification.confidence,
-        metadata: { traceId, answerHash: finalHash }
+        metadata: {
+          traceId,
+          answerHash: finalHash,
+          epistemicGraphDigest: epistemic?.graph?.digest || null,
+          selectedClaims: epistemic?.solve?.chosen?.selected || []
+        }
       });
     }
 
@@ -163,9 +210,15 @@ export class StatefulMindMesh {
         id: traceId,
         head: finishEvent.hash,
         views: views.map((v) => ({ role: v.role, hash: v.hash, ok: Boolean(v.content) })),
+        epistemic: compactEpistemicTrace(epistemic),
         verification
       } : undefined,
-      metrics: { durationMs: Date.now() - started, nodes: successful.length }
+      metrics: {
+        durationMs: Date.now() - started,
+        nodes: successful.length,
+        epistemicClaims: epistemic?.graph?.claims?.length || 0,
+        quantumCandidateAccepted: Boolean(epistemic?.solve?.acceptedQuantumCandidate)
+      }
     };
   }
 }
