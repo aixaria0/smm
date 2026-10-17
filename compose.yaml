@@ -1,0 +1,17 @@
+services:
+  smm:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      SMM_PROVIDER_URL: ${SMM_PROVIDER_URL:-http://host.docker.internal:11434/v1}
+      SMM_MODEL: ${SMM_MODEL:-}
+      SMM_API_KEY: ${SMM_API_KEY:-}
+      SMM_MODE: ${SMM_MODE:-balanced}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - smm-state:/app/.smm
+    restart: unless-stopped
+volumes:
+  smm-state:

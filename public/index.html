@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080b11">
+  <title>SMM · Stateful Mind Mesh</title>
+  <meta name="description" content="A stateful, model-agnostic AI runtime with verifiable multi-view synthesis.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient"></div>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div><strong>SMM</strong><small>STATEFUL MIND MESH</small></div>
+      </div>
+      <div class="status" id="status"><i></i><span>checking substrate</span></div>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">MODEL-INDEPENDENT COGNITION LAYER</p>
+      <h1>One answer.<br><em>Multiple minds.</em></h1>
+      <p class="lede">SMM decomposes each request into independent cognitive views, challenges their agreement, recalls relevant state, and synthesizes only after verification.</p>
+    </section>
+
+    <section class="workspace">
+      <div class="chat-panel">
+        <div class="messages" id="messages">
+          <article class="message system-card">
+            <div class="message-label">SMM</div>
+            <div class="message-body">The mesh is ready. Connect any OpenAI-compatible inference substrate, then ask normally. The model is replaceable; state, verification and synthesis live here.</div>
+          </article>
+        </div>
+        <form class="composer" id="composer">
+          <textarea id="prompt" rows="1" maxlength="24000" placeholder="Ask SMM…" aria-label="Message"></textarea>
+          <div class="composer-actions">
+            <div class="mode-switch" role="group" aria-label="Reasoning mode">
+              <button type="button" data-mode="fast">Fast</button>
+              <button type="button" data-mode="balanced" class="active">Balanced</button>
+              <button type="button" data-mode="deep">Deep</button>
+            </div>
+            <button class="send" id="send" type="submit">Run mesh <span>↗</span></button>
+          </div>
+        </form>
+      </div>
+
+      <aside class="inspector">
+        <div class="inspector-head"><span>TRACE</span><button id="clear-memory" title="Clear persistent memory">clear memory</button></div>
+        <dl class="metrics">
+          <div><dt>Confidence</dt><dd id="confidence">—</dd></div>
+          <div><dt>Intent</dt><dd id="intent">—</dd></div>
+          <div><dt>Nodes</dt><dd id="nodes">—</dd></div>
+          <div><dt>Latency</dt><dd id="latency">—</dd></div>
+          <div><dt>Memories</dt><dd id="memories">—</dd></div>
+        </dl>
+        <div class="trace-title">Cognitive mesh</div>
+        <div id="trace" class="trace-empty">No trace yet.</div>
+        <div class="proof">
+          <span>Ledger head</span>
+          <code id="ledger">—</code>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
