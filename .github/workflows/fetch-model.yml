@@ -1,0 +1,51 @@
+name: Cache GGUF model release
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_url:
+        description: Direct huggingface.co URL for a .gguf model
+        required: true
+        default: https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf
+      file_name:
+        description: Release asset file name (.gguf)
+        required: true
+        default: local-model.gguf
+
+permissions:
+  contents: write
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate input
+        env:
+          MODEL_URL: ${{ inputs.model_url }}
+          FILE_NAME: ${{ inputs.file_name }}
+        run: |
+          set -euo pipefail
+          case "$MODEL_URL" in
+            https://huggingface.co/*) ;;
+            *) echo "model_url must use https://huggingface.co/" >&2; exit 2 ;;
+          esac
+          [[ "$FILE_NAME" =~ ^[A-Za-z0-9._-]+\.gguf$ ]] || { echo "invalid .gguf file name" >&2; exit 2; }
+      - name: Download model
+        env:
+          MODEL_URL: ${{ inputs.model_url }}
+          FILE_NAME: ${{ inputs.file_name }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --retry-delay 2 --output "$FILE_NAME" "$MODEL_URL"
+          bytes=$(stat -c%s "$FILE_NAME")
+          max=$((1900 * 1024 * 1024))
+          echo "downloaded_bytes=$bytes"
+          (( bytes > 0 && bytes <= max )) || { echo "asset is empty or exceeds 1900 MiB release ceiling" >&2; exit 3; }
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILE_NAME: ${{ inputs.file_name }}
+        run: |
+          set -euo pipefail
+          tag="model-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" "$FILE_NAME" --repo "$GITHUB_REPOSITORY" --title "SMM model cache $tag" --notes "Manual GGUF cache artifact for local SMM inference."
