@@ -1,7 +1,7 @@
 {
   "name": "stateful-mind-mesh",
   "version": "1.0.0",
-  "description": "A model-agnostic, stateful AI runtime that composes multiple cognitive views into verified answers.",
+  "description": "A model-agnostic, stateful AI runtime with evidence-aware cognition and guarded quantum epistemic optimization.",
   "type": "module",
   "private": false,
   "engines": { "node": ">=20" },
@@ -11,8 +11,9 @@
     "chat": "node src/cli.js",
     "test": "node --test",
     "check": "node scripts/check.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "benchmark:quantum": "node scripts/quantum-benchmark.mjs"
   },
-  "keywords": ["ai", "agent", "memory", "inference", "openai-compatible", "reasoning", "mesh"],
+  "keywords": ["ai", "agent", "memory", "inference", "openai-compatible", "reasoning", "mesh", "quantum", "qaoa", "qubo", "epistemic"],
   "license": "MIT"
 }
